@@ -36,10 +36,10 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      # requirements.txt already pins pytest and pytest-asyncio. Installing
+      # them again unconstrained would silently ignore those pins.
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install pytest pytest-asyncio
+        run: pip install -r requirements.txt
 
       - name: Run tests
         env:
