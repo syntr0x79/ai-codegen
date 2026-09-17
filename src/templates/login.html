@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Factory of Code - Login</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <nav><strong>Factory of Code</strong></nav>
+    <div class="container" style="max-width:400px; margin-top:3rem;">
+        <div class="card">
+            <h2>Login</h2>
+            {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+            <form method="post" action="/auth/login">
+                <label>Username</label>
+                <input type="text" name="username" required>
+                <label>Password</label>
+                <input type="password" name="password" required>
+                <button type="submit" class="btn btn-primary" style="width:100%">Login</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

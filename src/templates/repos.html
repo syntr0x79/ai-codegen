@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+    <h1>Repositories</h1>
+    <button class="btn btn-primary" onclick="openConnectModal()">Connect Repository</button>
+</div>
+
+{% if repos %}
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Path</th>
+            <th>Default Branch</th>
+            <th>Last Synced</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for repo in repos %}
+    <tr style="cursor:pointer" onclick="location.href='/repos/{{ repo.id }}'">
+        <td><strong>{{ repo.name }}</strong></td>
+        <td>{{ repo.full_path }}</td>
+        <td><code>{{ repo.default_branch }}</code></td>
+        <td>{{ repo.last_synced_at.strftime('%Y-%m-%d %H:%M') if repo.last_synced_at else '--' }}</td>
+        <td>
+            <form method="post" action="/repos/{{ repo.id }}/disconnect" style="display:inline" onclick="event.stopPropagation()">
+                <button type="submit" class="btn btn-danger btn-sm"
+                        onclick="return confirm('Disconnect this repository?')">
+                    Disconnect
+                </button>
+            </form>
+        </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="card"><p>No repositories connected. Click "Connect Repository" to add one from GitLab.</p></div>
+{% endif %}
+
+{# ── Connect Modal ── #}
+<div id="connect-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+    <div class="modal-content">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+            <h2>Connect GitLab Repository</h2>
+            <button class="btn btn-sm" onclick="document.getElementById('connect-modal').style.display='none'">&times;</button>
+        </div>
+
+        <input type="text" id="gitlab-search" placeholder="Search projects..." oninput="searchProjects()">
+
+        <div id="search-results" style="max-height:400px; overflow-y:auto; margin-top:0.5rem;">
+            <p style="color:#888; text-align:center;">Type to search or wait for project list...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+var searchTimer = null;
+
+function openConnectModal() {
+    document.getElementById('connect-modal').style.display = 'flex';
+    document.getElementById('gitlab-search').value = '';
+    loadProjects('');
+}
+
+function searchProjects() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function() {
+        var query = document.getElementById('gitlab-search').value.trim();
+        loadProjects(query);
+    }, 400);
+}
+
+function loadProjects(query) {
+    var results = document.getElementById('search-results');
+    results.innerHTML = '<p style="color:#888; text-align:center;"><span class="spinner" style="vertical-align:middle;"></span> Loading...</p>';
+
+    var url = '/api/gitlab/projects' + (query ? '?search=' + encodeURIComponent(query) : '');
+    fetch(url)
+        .then(function(r) { return r.json(); })
+        .then(function(projects) {
+            if (projects.length === 0) {
+                results.innerHTML = '<p style="color:#888; padding:0.5rem;">No projects found</p>';
+                return;
+            }
+            var html = '';
+            projects.forEach(function(p) {
+                html += '<div class="card" style="margin-bottom:0.5rem; display:flex; justify-content:space-between; align-items:center;">' +
+                    '<div><strong>' + p.name + '</strong><br><span style="color:#888; font-size:0.85rem;">' + p.full_path + '</span></div>' +
+                    '<form method="post" action="/repos/connect">' +
+                    '<input type="hidden" name="gitlab_project_id" value="' + p.id + '">' +
+                    '<button type="submit" class="btn btn-primary btn-sm">Connect</button>' +
+                    '</form></div>';
+            });
+            results.innerHTML = html;
+        })
+        .catch(function(err) {
+            results.innerHTML = '<p style="color:#e63946; padding:0.5rem;">Failed to load projects. Check GitLab settings.</p>';
+        });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,551 @@
+{% extends "base.html" %}
+{% block content %}
+
+{# --- Header --- #}
+<div class="task-header">
+    <div class="task-header-left">
+        <h1>Run #{{ run.id }}: {{ run.title }}</h1>
+        <span class="status status-{{ run.status }}">{{ run.status }}</span>
+        <span class="work-type work-type-{{ run.work_type }}">{{ run.work_type }}</span>
+        <span class="risk-badge risk-{{ run.risk_level | default('low') }}">risk: {{ run.risk_level | default('low') }}</span>
+    </div>
+    <div class="task-header-right">
+        <div class="timer" id="elapsed-timer">--:--</div>
+        <div class="task-meta">
+            {% if source_repo %}<span><strong>Source:</strong> {{ source_repo.full_path }}</span>{% endif %}
+            {% if repo %}<span><strong>{% if source_repo %}Target{% else %}Repo{% endif %}:</strong> {{ repo.full_path }}</span>{% endif %}
+            <span><strong>Branch:</strong> {{ run.work_branch }} (from {{ run.base_branch }})</span>
+            <span class="route-pills"><strong>Route:</strong> {% for num, name in route_agents %}<a href="/runs/{{ run.id }}/artifacts/{{ agent_artifacts.get(name, '') }}" target="_blank" class="route-pill">{{ num }}. {{ name | replace('_', ' ') | title }}</a>{% if not loop.last %}<span class="route-arrow">&rarr;</span>{% endif %}{% endfor %}</span>
+            {% if run.rollback_count > 0 %}<span><strong>Rollbacks:</strong> {{ run.rollback_count }}</span>{% endif %}
+            {% if run.mr_url %}<span><strong>MR:</strong> <a href="{{ run.mr_url }}" target="_blank">View MR</a></span>{% endif %}
+        </div>
+    </div>
+</div>
+
+{% if run.final_verdict %}<div class="card" style="margin-top:0.5rem;"><strong>Verdict:</strong> {{ run.final_verdict }}</div>{% endif %}
+
+{# --- Original Prompt --- #}
+<details class="card" style="margin-top:0.5rem;">
+    <summary style="cursor:pointer; font-weight:600;">Task Description</summary>
+    <div class="log-output" style="margin-top:0.5rem; max-height:300px;">{{ run.description }}</div>
+</details>
+
+{# --- Checkpoint Banner --- #}
+{% if pending_checkpoint %}
+<div class="checkpoint-banner">
+    <h3>Checkpoint: {{ pending_checkpoint.agent_name | replace('_', ' ') | title }}</h3>
+
+    {# Summary extracted from artifact #}
+    <div class="checkpoint-summary">
+        <pre style="white-space:pre-wrap; font-size:0.85rem; background:#fff; padding:0.75rem; border-radius:4px; border:1px solid #e0d9c8; max-height:300px; overflow-y:auto;">{{ pending_checkpoint.reason }}</pre>
+    </div>
+
+    {# Full artifact as collapsible detail #}
+    {% set cp_artifact = agent_artifacts.get(pending_checkpoint.agent_name, '') %}
+    {% if cp_artifact %}
+    <details style="margin:0.5rem 0;" id="cp-artifact-details">
+        <summary style="cursor:pointer; font-size:0.9rem; font-weight:600;" onclick="loadCheckpointArtifact()">Full artifact: {{ cp_artifact }}</summary>
+        <div class="checkpoint-artifact" id="cp-artifact-content">
+            <div class="log-output">Click to load...</div>
+        </div>
+    </details>
+    <script>
+    var cpArtifactLoaded = false;
+    function loadCheckpointArtifact() {
+        if (cpArtifactLoaded) return;
+        cpArtifactLoaded = true;
+        var el = document.getElementById('cp-artifact-content');
+        el.innerHTML = '<div class="log-output">Loading...</div>';
+        fetch('/runs/{{ run.id }}/artifacts/{{ cp_artifact }}')
+            .then(function(r) { return r.text(); })
+            .then(function(html) { el.innerHTML = html; })
+            .catch(function() { el.innerHTML = '<div class="log-output">Failed to load</div>'; });
+    }
+    </script>
+    {% endif %}
+
+    <div class="checkpoint-actions">
+        <textarea id="cp-comment" name="comment" placeholder="Comment (optional)" style="flex:1;"></textarea>
+        <div style="display:flex; gap:0.5rem; align-items:flex-start;">
+            <form method="post" action="/runs/{{ run.id }}/checkpoints/{{ pending_checkpoint.id }}/approve" style="display:inline;">
+                <input type="hidden" name="comment" id="approve-comment">
+                <button type="submit" class="btn btn-primary" onclick="document.getElementById('approve-comment').value=document.getElementById('cp-comment').value;">Approve</button>
+            </form>
+            <form method="post" action="/runs/{{ run.id }}/checkpoints/{{ pending_checkpoint.id }}/reject" style="display:inline;">
+                <input type="hidden" name="comment" id="reject-comment">
+                <button type="submit" class="btn btn-danger" onclick="if(!confirm('Reject this run?'))return false; document.getElementById('reject-comment').value=document.getElementById('cp-comment').value;">Reject</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# --- Progress Bar --- #}
+{% if run.status in ('pending', 'running', 'awaiting_checkpoint') %}
+{% set total_steps = route_agents | length %}
+{% set done_steps = run.current_step_idx %}
+{% set pct = ((done_steps / total_steps) * 100) | int if total_steps > 0 else 0 %}
+{% if pct > 99 and run.status != 'completed' %}{% set pct = 99 %}{% endif %}
+
+<div style="margin:1rem 0;">
+    <div style="display:flex; justify-content:space-between; margin-bottom:0.25rem;">
+        <span style="font-weight:600;">Progress</span>
+        <span id="progress-pct">{{ pct }}%</span>
+    </div>
+    <div style="background:#e0e0e0; border-radius:8px; height:12px; overflow:hidden;">
+        <div id="progress-bar" style="background:linear-gradient(90deg,#4361ee,#06d6a0); height:100%; border-radius:8px; transition:width 0.5s ease; width:{{ pct }}%;"></div>
+    </div>
+</div>
+{% elif run.status == 'completed' %}
+<div style="margin:1rem 0;">
+    <div style="display:flex; justify-content:space-between; margin-bottom:0.25rem;">
+        <span style="font-weight:600;">Progress</span><span>100%</span>
+    </div>
+    <div style="background:#e0e0e0; border-radius:8px; height:12px; overflow:hidden;">
+        <div style="background:linear-gradient(90deg,#4361ee,#06d6a0); height:100%; border-radius:8px; width:100%;"></div>
+    </div>
+</div>
+{% endif %}
+
+{# --- Phase Cards --- #}
+{% set phase_icons = {
+    'orchestrator': '1', 'spec_builder': '2', 'architecture_mapper': '3',
+    'implementation': '4', 'test_contract': '5', 'verification': '6',
+    'security_policy': '7', 'release_gatekeeper': '8',
+    'code_archeologist': '1', 'transformation_architect': '2', 'feature_mapper': '3',
+    'transform_implementer': '4', 'compatibility_checker': '5', 'transform_release': '6',
+    'infra_analyst': '1', 'change_planner': '2', 'safety_reviewer': '3',
+    'infra_executor': '4', 'health_checker': '5', 'ops_reporter': '6'
+} %}
+{% set phase_colors = {
+    'orchestrator': '#6c757d', 'spec_builder': '#ffd166', 'architecture_mapper': '#ef476f',
+    'implementation': '#4361ee', 'test_contract': '#06d6a0', 'verification': '#118ab2',
+    'security_policy': '#e63946', 'release_gatekeeper': '#2d6a4f',
+    'code_archeologist': '#6c757d', 'transformation_architect': '#7209b7', 'feature_mapper': '#ffd166',
+    'transform_implementer': '#4361ee', 'compatibility_checker': '#06d6a0', 'transform_release': '#2d6a4f',
+    'infra_analyst': '#6c757d', 'change_planner': '#f77f00', 'safety_reviewer': '#e63946',
+    'infra_executor': '#4361ee', 'health_checker': '#06d6a0', 'ops_reporter': '#2d6a4f'
+} %}
+
+{% set route_agent_names = route_agents | map(attribute=1) | list %}
+
+<div class="phase-cards-grid-8">
+{% for agent_num, agent in all_agents.items() %}
+    {% set in_route = agent in route_agent_names %}
+
+    {# Find the latest step for this agent #}
+    {% set ns = namespace(step=None) %}
+    {% for s in steps %}
+        {% if s.agent_name == agent %}
+            {% set ns.step = s %}
+        {% endif %}
+    {% endfor %}
+    {% set step = ns.step %}
+
+    {# Determine card status #}
+    {% if not in_route %}
+        {% set card_status = 'skipped' %}
+        {% set status_text = 'Skipped' %}
+    {% elif step and step.status == 'completed' %}
+        {% set card_status = 'done' %}
+        {% set status_text = 'Done' %}
+    {% elif step and step.status == 'failed' %}
+        {% set card_status = 'failed' %}
+        {% set status_text = 'Failed' %}
+    {% elif step and step.status == 'rolled_back' %}
+        {% set card_status = 'rolled_back' %}
+        {% set status_text = 'Rolled back' %}
+    {% elif step and step.status == 'running' %}
+        {% set card_status = 'active' %}
+        {% set status_text = 'Running' %}
+    {% else %}
+        {% set card_status = 'pending' %}
+        {% set status_text = 'Pending' %}
+    {% endif %}
+
+    <div class="phase-card phase-card-{{ card_status }}" style="border-top: 3px solid {{ phase_colors.get(agent, '#adb5bd') }}; cursor:pointer;"
+         onclick="toggleStepLog('{{ agent }}', {{ step.id if step else 0 }})">
+        <div class="phase-card-header">
+            <span class="phase-card-icon">{{ phase_icons.get(agent, '?') }}</span>
+            <span class="phase-card-name">{{ agent | replace('_', ' ') | title }}</span>
+            <span class="phase-card-status">
+                {% if card_status == 'active' %}<span class="spinner"></span>
+                {% elif card_status == 'done' %}&#10003;
+                {% elif card_status == 'failed' %}&#10007;
+                {% elif card_status == 'skipped' %}&#8212;
+                {% elif card_status == 'rolled_back' %}&#8634;
+                {% else %}&#9711;{% endif %}
+            </span>
+        </div>
+        <div class="phase-card-body">
+            {% if step and step.duration_seconds %}
+                {% set mins = (step.duration_seconds // 60) | int %}
+                {% set secs = (step.duration_seconds % 60) | int %}
+                <div class="phase-card-stat"><span class="stat-label">Duration</span><span class="stat-value">{{ mins }}m {{ secs }}s</span></div>
+            {% else %}
+                <div class="phase-card-stat"><span class="stat-label">Duration</span><span class="stat-value">--</span></div>
+            {% endif %}
+
+            {% if step and step.verdict %}
+                <div class="phase-card-stat"><span class="stat-label">Verdict</span><span class="stat-value">{{ step.verdict }}</span></div>
+            {% endif %}
+
+            <div class="phase-card-stat"
+                 {% if step and step.metrics_json %}data-metrics="{{ step.metrics_json | e }}"{% endif %}>
+                <span class="stat-label">Tokens</span>
+                <span class="stat-value phase-tokens">--</span>
+            </div>
+            <div class="phase-card-stat">
+                <span class="stat-label">Cost</span>
+                <span class="stat-value phase-cost">--</span>
+            </div>
+        </div>
+    </div>
+{% endfor %}
+</div>
+
+{# --- Step Log Panel (shown when clicking a phase card) --- #}
+<div id="step-log-panel" style="display:none; margin-bottom:1rem;">
+    <div class="card" style="padding:0;">
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 1rem; background:#f8f8f8; border-bottom:1px solid #eee;">
+            <strong id="step-log-title">Agent Log</strong>
+            <button class="btn btn-sm" onclick="document.getElementById('step-log-panel').style.display='none'">&times;</button>
+        </div>
+        <div class="log-output" id="step-log-content" style="max-height:400px; border-radius:0 0 8px 8px; margin:0;">Loading...</div>
+    </div>
+</div>
+
+{# --- Timeline Bar --- #}
+{% set ns = namespace(total_duration=0) %}
+{% for step in steps %}
+    {% if step.duration_seconds %}{% set ns.total_duration = ns.total_duration + step.duration_seconds %}{% endif %}
+{% endfor %}
+
+{% if ns.total_duration > 0 %}
+<h2>Timeline</h2>
+<div class="timeline-bar">
+    {% for step in steps %}
+        {% if step.duration_seconds and step.duration_seconds > 0 %}
+            {% set pct = (step.duration_seconds / ns.total_duration * 100) %}
+            <div class="timeline-segment"
+                 style="width: {{ pct }}%; background: {{ phase_colors.get(step.agent_name, '#adb5bd') }};"
+                 title="{{ step.agent_name }} (attempt {{ step.attempt }}): {{ step.duration_seconds | int }}s">
+                <span class="timeline-label">{{ phase_icons.get(step.agent_name, '?') }}</span>
+            </div>
+        {% endif %}
+    {% endfor %}
+</div>
+{% endif %}
+
+{# --- Artifacts --- #}
+{% if artifacts %}
+<h2>Artifacts</h2>
+<div class="artifact-section">
+    <div class="artifact-tabs">
+        {% for art in artifacts %}
+        <button class="artifact-tab {% if loop.first %}active{% endif %}" data-target="artifact-{{ loop.index }}">{{ art.filename }}</button>
+        {% endfor %}
+    </div>
+    {% for art in artifacts %}
+    <div class="artifact-content" id="artifact-{{ loop.index }}" {% if not loop.first %}style="display:none;"{% endif %}
+         hx-get="/runs/{{ run.id }}/artifacts/{{ art.filename }}" hx-trigger="{% if loop.first %}load{% else %}revealed{% endif %}" hx-swap="innerHTML">
+        <div class="log-output">Loading...</div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+{# --- Checkpoint History --- #}
+{% if checkpoints | length > 0 %}
+<h2>Checkpoints</h2>
+<div class="card">
+    <table>
+        <thead><tr><th>Agent</th><th>Status</th><th>Comment</th><th>Time</th></tr></thead>
+        <tbody>
+        {% for cp in checkpoints %}
+        <tr>
+            <td>{{ cp.agent_name | replace('_', ' ') | title }}</td>
+            <td>
+                {% if cp.status == 'approved' %}<span class="status status-completed">Approved</span>
+                {% elif cp.status == 'rejected' %}<span class="status status-failed">Rejected</span>
+                {% else %}<span class="status status-pending">Pending</span>{% endif %}
+            </td>
+            <td>{{ cp.reviewer_comment or '--' }}</td>
+            <td>{{ cp.reviewed_at.strftime('%H:%M:%S') if cp.reviewed_at else '--' }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{# --- Stats Summary --- #}
+{% if run.status in ('completed', 'failed', 'rejected') %}
+<h2>Stats</h2>
+<div class="stats-grid" id="stats-grid">
+    <div class="stats-card">
+        <div class="stats-number" id="stat-total-time">--</div>
+        <div class="stats-label">Total Time</div>
+    </div>
+    <div class="stats-card">
+        <div class="stats-number" id="stat-total-tokens">--</div>
+        <div class="stats-label">Total Tokens</div>
+    </div>
+    <div class="stats-card">
+        <div class="stats-number" id="stat-total-cost">--</div>
+        <div class="stats-label">Total Cost</div>
+    </div>
+    <div class="stats-card">
+        <div class="stats-number">{{ steps | length }}</div>
+        <div class="stats-label">Steps Run</div>
+    </div>
+</div>
+{% endif %}
+
+{# --- Live Output --- #}
+<details {% if run.status in ('pending', 'running') %}open{% endif %} class="live-output-section">
+    <summary><h2 style="display:inline;">Live Output</h2></summary>
+    <div class="log-output" id="log-output">Loading...</div>
+</details>
+
+{# --- Action Buttons --- #}
+<div style="margin-top:1rem; display:flex; gap:0.5rem;">
+{% if run.status in ('pending', 'running') %}
+    <form method="post" action="/runs/{{ run.id }}/cancel" style="display:inline;">
+        <button type="submit" class="btn btn-danger" onclick="return confirm('Cancel this run?')">Cancel Run</button>
+    </form>
+{% endif %}
+{% if run.status in ('failed', 'cancelled', 'rejected') %}
+    <form method="post" action="/runs/{{ run.id }}/restart" style="display:inline;">
+        <button type="submit" class="btn btn-primary" onclick="return confirm('Restart this run from the beginning?')">Restart Run</button>
+    </form>
+{% endif %}
+</div>
+
+{# --- Diff --- #}
+{% if run.status == 'completed' %}
+<h2>Diff</h2>
+<div class="log-output" hx-get="/runs/{{ run.id }}/diff" hx-trigger="load" hx-swap="innerHTML">Loading diff...</div>
+{% endif %}
+
+<script>
+// --- Step Log Viewer ---
+var stepLogInterval = null;
+
+function toggleStepLog(agentName, stepId) {
+    var panel = document.getElementById('step-log-panel');
+    var title = document.getElementById('step-log-title');
+    var content = document.getElementById('step-log-content');
+
+    if (stepLogInterval) { clearInterval(stepLogInterval); stepLogInterval = null; }
+
+    if (!stepId) {
+        content.textContent = 'This agent has not run yet';
+        title.textContent = agentName.replace(/_/g, ' ');
+        panel.style.display = 'block';
+        panel.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+        return;
+    }
+
+    // If same panel is open, close it
+    if (panel.style.display === 'block' && panel.dataset.stepId == stepId) {
+        panel.style.display = 'none';
+        return;
+    }
+
+    panel.dataset.stepId = stepId;
+    title.textContent = agentName.replace(/_/g, ' ');
+    content.textContent = 'Loading...';
+    panel.style.display = 'block';
+
+    function loadLog() {
+        fetch('/runs/{{ run.id }}/steps/' + stepId + '/logs')
+            .then(function(r) { return r.text(); })
+            .then(function(text) {
+                content.textContent = text || 'No output yet';
+                content.scrollTop = content.scrollHeight;
+            })
+            .catch(function() { content.textContent = 'Error loading logs'; });
+    }
+
+    loadLog();
+    panel.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+
+    // Auto-refresh if step might still be running
+    stepLogInterval = setInterval(loadLog, 3000);
+}
+</script>
+
+<script>
+// --- Timer ---
+(function() {
+    var timerEl = document.getElementById('elapsed-timer');
+    var created = "{{ run.created_at }}";
+    var updated = "{{ run.updated_at }}";
+    var status = "{{ run.status }}";
+    function parseDate(s) { return new Date(s + (s.endsWith('Z') ? '' : (s.includes('+') ? '' : 'Z'))); }
+    function fmt(ms) {
+        var t = Math.floor(ms/1000), h=Math.floor(t/3600), m=Math.floor((t%3600)/60), s=t%60;
+        return h>0 ? h+'h '+m+'m '+s+'s' : m+'m '+s+'s';
+    }
+    var start = parseDate(created);
+    var isActive = (status === 'pending' || status === 'running' || status === 'awaiting_checkpoint');
+    if (isActive) {
+        function tick() { timerEl.textContent = fmt(new Date() - start); }
+        tick();
+        setInterval(tick, 1000);
+    } else {
+        var end = parseDate(updated);
+        timerEl.textContent = fmt(end - start);
+    }
+})();
+
+// --- Metrics ---
+(function() {
+    var totalTokens=0, totalCost=0;
+    document.querySelectorAll('.phase-card-stat[data-metrics]').forEach(function(el) {
+        try {
+            var m = JSON.parse(el.getAttribute('data-metrics'));
+            var card = el.closest('.phase-card');
+            var tokens = (m.input_tokens||0) + (m.output_tokens||0);
+            totalTokens += tokens; totalCost += (m.cost_usd||0);
+            var te = card.querySelector('.phase-tokens'); if(te) te.textContent = tokens.toLocaleString();
+            var ce = card.querySelector('.phase-cost'); if(ce) ce.textContent = '$'+(m.cost_usd||0).toFixed(4);
+        } catch(e){}
+    });
+    var st = document.getElementById('stat-total-tokens'); if(st) st.textContent = totalTokens.toLocaleString();
+    var sc = document.getElementById('stat-total-cost'); if(sc) sc.textContent = '$'+totalCost.toFixed(4);
+    var tt = document.getElementById('stat-total-time');
+    if(tt) { var s={{ ns.total_duration|default(0) }}; tt.textContent = Math.floor(s/60)+'m '+Math.floor(s%60)+'s'; }
+})();
+
+// --- Artifact Tabs ---
+(function() {
+    document.querySelectorAll('.artifact-tab').forEach(function(tab) {
+        tab.addEventListener('click', function() {
+            document.querySelectorAll('.artifact-tab').forEach(function(t){t.classList.remove('active');});
+            tab.classList.add('active');
+            document.querySelectorAll('.artifact-content').forEach(function(c){c.style.display='none';});
+            var el = document.getElementById(tab.getAttribute('data-target'));
+            if(el) { el.style.display='block'; htmx.trigger(el, 'revealed'); }
+        });
+    });
+})();
+
+// --- SSE + Live Phase Cards ---
+{% if run.status in ('pending', 'running', 'awaiting_checkpoint') %}
+(function() {
+    var output = document.getElementById('log-output');
+    output.textContent = '';
+    var reloading = false;
+    var evtSource = new EventSource('/runs/{{ run.id }}/stream');
+
+    evtSource.addEventListener('log', function(e) {
+        output.textContent += e.data + '\n';
+        output.scrollTop = output.scrollHeight;
+    });
+
+    evtSource.addEventListener('done', function(e) {
+        evtSource.close();
+        if (!reloading) { reloading = true; location.reload(); }
+    });
+
+    evtSource.addEventListener('error', function(e) {
+        // Reconnect automatically handled by EventSource, but log it
+        console.warn('SSE connection error, will retry...');
+    });
+
+    function updatePhaseCards(steps) {
+        document.querySelectorAll('.phase-card').forEach(function(card) {
+            var nameEl = card.querySelector('.phase-card-name');
+            if (!nameEl) return;
+            // Convert display name back to agent_name
+            var displayName = nameEl.textContent.trim();
+            var agentName = displayName.toLowerCase().replace(/ /g, '_');
+
+            var step = steps[agentName];
+            if (!step) return;
+
+            var statusEl = card.querySelector('.phase-card-status');
+            if (!statusEl) return;
+
+            // Update status icon
+            if (step.status === 'running') {
+                statusEl.innerHTML = '<span class="spinner"></span>';
+                card.className = card.className.replace(/phase-card-\w+/g, '').trim() + ' phase-card phase-card-active';
+            } else if (step.status === 'completed') {
+                statusEl.innerHTML = '&#10003;';
+                card.className = card.className.replace(/phase-card-\w+/g, '').trim() + ' phase-card phase-card-done';
+            } else if (step.status === 'failed') {
+                statusEl.innerHTML = '&#10007;';
+                card.className = card.className.replace(/phase-card-\w+/g, '').trim() + ' phase-card phase-card-failed';
+            }
+
+            // Update duration
+            if (step.duration_seconds) {
+                var mins = Math.floor(step.duration_seconds / 60);
+                var secs = Math.floor(step.duration_seconds % 60);
+                var durEl = card.querySelector('.stat-value');
+                if (durEl) durEl.textContent = mins + 'm ' + secs + 's';
+            }
+        });
+    }
+
+    // Poll for status + step updates every 5 seconds
+    var pageStatus = '{{ run.status }}';
+
+    setInterval(function() {
+        if (reloading) return;
+        fetch('/runs/{{ run.id }}/status-check')
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (reloading) return;
+
+                // Terminal states — full reload
+                if (d.status === 'completed' || d.status === 'failed' ||
+                    d.status === 'cancelled' || d.status === 'rejected') {
+                    reloading = true;
+                    evtSource.close();
+                    location.reload();
+                    return;
+                }
+
+                // New checkpoint arrived (was running, now awaiting) — reload to show banner
+                if (d.status === 'awaiting_checkpoint' && pageStatus === 'running') {
+                    reloading = true;
+                    evtSource.close();
+                    location.reload();
+                    return;
+                }
+
+                // Was awaiting_checkpoint, now running again (approved!) — reload to update UI
+                if (d.status === 'running' && pageStatus === 'awaiting_checkpoint') {
+                    reloading = true;
+                    evtSource.close();
+                    location.reload();
+                    return;
+                }
+
+                // Track current status
+                pageStatus = d.status;
+
+                // Update phase cards live
+                if (d.steps) {
+                    updatePhaseCards(d.steps);
+                }
+
+                // Update progress bar
+                var totalSteps = {{ route_agents | length }};
+                var doneSteps = d.current_step_idx || 0;
+                var pct = Math.min(Math.round((doneSteps / totalSteps) * 100), 99);
+                var bar = document.getElementById('progress-bar');
+                var pctEl = document.getElementById('progress-pct');
+                if (bar) bar.style.width = pct + '%';
+                if (pctEl) pctEl.textContent = pct + '%';
+            })
+            .catch(function() {});
+    }, 5000);
+})();
+{% endif %}
+</script>
+{% endblock %}

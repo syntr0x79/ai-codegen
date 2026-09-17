@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+{% block content %}
+
+{# ── Top: Status Cards ── #}
+<div class="dash-cards-row">
+    <div class="dash-card" id="card-claude">
+        <div class="dash-card-label">Claude</div>
+        <div class="dash-card-value" id="claude-badge">...</div>
+    </div>
+    <div class="dash-card">
+        <div class="dash-card-label">Total Runs</div>
+        <div class="dash-card-value" id="stat-total-runs">--</div>
+        <div class="dash-card-sub" id="stat-runs-breakdown"></div>
+    </div>
+    <div class="dash-card">
+        <div class="dash-card-label">Total Cost</div>
+        <div class="dash-card-value" id="stat-total-cost">--</div>
+        <div class="dash-card-sub" id="stat-total-tokens-sub"></div>
+    </div>
+    <div class="dash-card">
+        <div class="dash-card-label">Success Rate</div>
+        <div class="dash-card-value" id="stat-success-rate">--</div>
+        <div class="dash-card-sub" id="stat-avg-duration"></div>
+    </div>
+</div>
+
+{# ── Middle: Pipeline + Agents ── #}
+<div class="dash-two-col">
+    <div>
+        <h2>Pipeline</h2>
+        <div class="card">
+            <div class="dash-stat-row">
+                <span class="dash-stat-label">Pending Checkpoints</span>
+                <span class="dash-stat-value" id="stat-pending-cp">--</span>
+            </div>
+            <div class="dash-stat-row">
+                <span class="dash-stat-label">Total Rollbacks</span>
+                <span class="dash-stat-value" id="stat-rollbacks">--</span>
+            </div>
+            <div class="dash-stat-row">
+                <span class="dash-stat-label">Avg Run Duration</span>
+                <span class="dash-stat-value" id="stat-duration">--</span>
+            </div>
+            <div class="dash-stat-row">
+                <span class="dash-stat-label">Total Tool Calls</span>
+                <span class="dash-stat-value" id="stat-tool-calls">--</span>
+            </div>
+        </div>
+
+        <h3>Runs by Type</h3>
+        <div class="card" id="work-type-bars"></div>
+
+        <h3>Runs by Status</h3>
+        <div class="card" id="status-bars"></div>
+    </div>
+
+    <div>
+        <h2>Agents</h2>
+        <div class="card" style="overflow-x:auto;">
+            <table class="agent-stats-table">
+                <thead>
+                    <tr>
+                        <th>Agent</th>
+                        <th>Steps</th>
+                        <th>Avg Time</th>
+                        <th>Tokens</th>
+                        <th>Cost</th>
+                        <th>Tools</th>
+                    </tr>
+                </thead>
+                <tbody id="agent-stats-body">
+                    <tr><td colspan="6" style="color:#888;">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{# ── System ── #}
+<h2>System</h2>
+<div class="dash-cards-row">
+    <div class="dash-card">
+        <div class="dash-card-label">Memory</div>
+        <div class="dash-card-value" id="sys-memory">--</div>
+    </div>
+    <div class="dash-card">
+        <div class="dash-card-label">Load Average</div>
+        <div class="dash-card-value" id="sys-load">--</div>
+    </div>
+    <div class="dash-card">
+        <div class="dash-card-label">Disk</div>
+        <div class="dash-card-value" id="sys-disk">--</div>
+    </div>
+    <div class="dash-card">
+        <div class="dash-card-label">Database Size</div>
+        <div class="dash-card-value" id="sys-db">--</div>
+    </div>
+</div>
+
+
+<script>
+var STATUS_COLORS = {
+    completed: '#4361ee', failed: '#e63946', running: '#06d6a0',
+    pending: '#ffd166', cancelled: '#adb5bd', rejected: '#6c757d',
+    awaiting_checkpoint: '#ffd166'
+};
+var TYPE_COLORS = {
+    feature: '#4361ee', bugfix: '#06d6a0', refactor: '#118ab2',
+    migration: '#e63946', hotfix: '#ef476f'
+};
+
+function fmtDuration(sec) {
+    if (!sec) return '--';
+    var m = Math.floor(sec / 60), s = Math.floor(sec % 60);
+    return m > 0 ? m + 'm ' + s + 's' : s + 's';
+}
+
+function renderBar(container, items, colorMap) {
+    var total = items.reduce(function(s,i){return s+i[1];}, 0);
+    if (total === 0) { container.innerHTML = '<p style="color:#888;">No data</p>'; return; }
+    var html = '';
+    items.forEach(function(item) {
+        var name = item[0], count = item[1];
+        var pct = (count / total * 100).toFixed(0);
+        var color = colorMap[name] || '#adb5bd';
+        html += '<div class="dash-bar-row">' +
+            '<span class="dash-bar-label">' + name + '</span>' +
+            '<div class="dash-bar-track"><div class="dash-bar-fill" style="width:' + pct + '%; background:' + color + ';"></div></div>' +
+            '<span class="dash-bar-count">' + count + '</span></div>';
+    });
+    container.innerHTML = html;
+}
+
+// Fetch dashboard stats
+fetch('/api/dashboard/stats')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        // Total runs
+        document.getElementById('stat-total-runs').textContent = d.total_runs;
+        var parts = [];
+        if (d.runs.completed) parts.push(d.runs.completed + ' done');
+        if (d.runs.running) parts.push(d.runs.running + ' running');
+        if (d.runs.failed) parts.push(d.runs.failed + ' failed');
+        document.getElementById('stat-runs-breakdown').textContent = parts.join(', ') || 'no runs';
+
+        // Cost
+        document.getElementById('stat-total-cost').textContent = '$' + d.totals.cost_usd.toFixed(2);
+        document.getElementById('stat-total-tokens-sub').textContent = d.totals.tokens.toLocaleString() + ' tokens';
+
+        // Success rate
+        document.getElementById('stat-success-rate').textContent = d.success_rate + '%';
+        document.getElementById('stat-avg-duration').textContent = 'avg ' + fmtDuration(d.avg_run_duration);
+
+        // Pipeline stats
+        document.getElementById('stat-pending-cp').textContent = d.pending_checkpoints;
+        document.getElementById('stat-rollbacks').textContent = d.total_rollbacks;
+        document.getElementById('stat-duration').textContent = fmtDuration(d.avg_run_duration);
+        document.getElementById('stat-tool-calls').textContent = d.totals.tool_calls.toLocaleString();
+
+        // Work type bars
+        var typeItems = Object.entries(d.work_types || {}).sort(function(a,b){return b[1]-a[1];});
+        renderBar(document.getElementById('work-type-bars'), typeItems, TYPE_COLORS);
+
+        // Status bars
+        var statusItems = Object.entries(d.runs || {}).sort(function(a,b){return b[1]-a[1];});
+        renderBar(document.getElementById('status-bars'), statusItems, STATUS_COLORS);
+
+        // Agent table
+        var tbody = document.getElementById('agent-stats-body');
+        if (d.agents.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="color:#888;">No agent data yet</td></tr>';
+        } else {
+            var html = '';
+            d.agents.forEach(function(a) {
+                html += '<tr>' +
+                    '<td><strong>' + a.name.replace(/_/g, ' ') + '</strong></td>' +
+                    '<td>' + a.steps + '</td>' +
+                    '<td>' + fmtDuration(a.avg_duration) + '</td>' +
+                    '<td>' + a.total_tokens.toLocaleString() + '</td>' +
+                    '<td>$' + a.total_cost.toFixed(4) + '</td>' +
+                    '<td>' + a.total_tool_calls + '</td></tr>';
+            });
+            tbody.innerHTML = html;
+        }
+
+        // System metrics
+        var sys = d.system || {};
+        if (sys.memory_total_mb) {
+            document.getElementById('sys-memory').textContent = sys.memory_used_mb + ' / ' + sys.memory_total_mb + ' MB';
+        }
+        if (sys.load_avg_1m !== undefined) {
+            document.getElementById('sys-load').textContent = sys.load_avg_1m + ' / ' + sys.load_avg_5m;
+        }
+        if (sys.disk_total_gb) {
+            document.getElementById('sys-disk').textContent = sys.disk_used_gb + ' / ' + sys.disk_total_gb + ' GB';
+        }
+        document.getElementById('sys-db').textContent = (d.db_size_mb || 0) + ' MB';
+    })
+    .catch(function(e) { console.error('Dashboard stats error:', e); });
+
+// Claude status
+fetch('/api/claude/status')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        var el = document.getElementById('claude-badge');
+        if (d.loggedIn) {
+            var label = d.email || d.authMethod || 'Claude';
+            var plan = d.subscriptionType || 'active';
+            el.innerHTML = '<span class="claude-auth-badge logged-in" style="font-size:0.85rem;">' + label + ' (' + plan + ')</span>';
+        } else {
+            el.innerHTML = '<span class="claude-auth-badge logged-out" style="font-size:0.85rem;">Not logged in</span>';
+        }
+    })
+    .catch(function() {
+        document.getElementById('claude-badge').innerHTML = '<span style="color:#888;">unavailable</span>';
+    });
+</script>
+{% endblock %}

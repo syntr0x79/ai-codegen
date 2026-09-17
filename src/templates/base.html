@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Factory of Code</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+</head>
+<body>
+    <nav>
+        <a href="/" style="color:#fff; text-decoration:none;"><strong>Factory of Code</strong></a>
+        <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="/runs">Runs</a>
+            <a href="/transform/new">Transform</a>
+            <a href="/devops/new">DevOps</a>
+            <div class="nav-dropdown">
+                <button class="nav-dropdown-btn" onclick="this.parentElement.classList.toggle('open')">
+                    {{ user.username }} &#9662;
+                </button>
+                <div class="nav-dropdown-menu">
+                    <a href="/repos">Repos</a>
+                    <a href="/presets">Presets</a>
+                    <a href="/prompts">Prompts</a>
+                    <a href="/settings">Settings</a>
+                    <hr>
+                    <form method="post" action="/auth/logout">
+                        <button type="submit">Logout</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </nav>
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+    <script>
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(e) {
+        document.querySelectorAll('.nav-dropdown.open').forEach(function(d) {
+            if (!d.contains(e.target)) d.classList.remove('open');
+        });
+    });
+    </script>
+</body>
+</html>

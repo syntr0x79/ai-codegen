@@ -1,0 +1,130 @@
+orchestrator:
+  model: claude-sonnet-4-6
+  max_turns: 5
+  timeout: 300
+  allowed_tools:
+  - Read
+  - Glob
+  - Grep
+  - Write
+  artifacts_read: []
+  artifacts_write:
+  - routing.yaml
+spec_builder:
+  model: claude-sonnet-4-6
+  max_turns: 15
+  timeout: 600
+  allowed_tools:
+  - Read
+  - Glob
+  - Grep
+  - Write
+  artifacts_read:
+  - routing.yaml
+  artifacts_write:
+  - spec.md
+  - acceptance.md
+  - scope.yaml
+  - trace.yaml
+architecture_mapper:
+  model: claude-sonnet-4-6
+  max_turns: 15
+  timeout: 600
+  allowed_tools:
+  - Read
+  - Glob
+  - Grep
+  - Write
+  artifacts_read:
+  - spec.md
+  - scope.yaml
+  artifacts_write:
+  - impact-map.md
+  - adr-delta.md
+implementation:
+  model: claude-sonnet-4-6
+  max_turns: 40
+  timeout: 1800
+  allowed_tools:
+  - Read
+  - Glob
+  - Grep
+  - Write
+  - Edit
+  - Bash
+  artifacts_read:
+  - spec.md
+  - impact-map.md
+  artifacts_write:
+  - patch-summary.md
+test_contract:
+  model: claude-sonnet-4-6
+  max_turns: 20
+  timeout: 900
+  allowed_tools:
+  - Read
+  - Glob
+  - Grep
+  - Write
+  - Edit
+  - Bash
+  artifacts_read:
+  - spec.md
+  - patch-summary.md
+  artifacts_write:
+  - test-plan.md
+  - regression-matrix.md
+  - contract-verdict.json
+verification:
+  model: claude-sonnet-4-6
+  max_turns: 10
+  timeout: 600
+  allowed_tools:
+  - Read
+  - Glob
+  - Grep
+  - Write
+  - Bash
+  artifacts_read:
+  - test-plan.md
+  - regression-matrix.md
+  - contract-verdict.json
+  - spec.md
+  artifacts_write:
+  - verdict.json
+  - evidence.md
+security_policy:
+  model: claude-sonnet-4-6
+  max_turns: 10
+  timeout: 600
+  allowed_tools:
+  - Read
+  - Glob
+  - Grep
+  - Write
+  - Bash
+  artifacts_read: []
+  artifacts_write:
+  - policy-verdict.json
+release_gatekeeper:
+  model: claude-sonnet-4-6
+  max_turns: 10
+  timeout: 600
+  allowed_tools:
+  - Read
+  - Glob
+  - Grep
+  - Write
+  artifacts_read:
+  - verdict.json
+  - evidence.md
+  - policy-verdict.json
+  - spec.md
+  artifacts_write:
+  - pr-summary.md
+  - rollout.md
+  - rollback.md
+pipeline:
+  max_concurrent_runs: 2
+  max_rollbacks: 3
+  artifact_dir: .factory

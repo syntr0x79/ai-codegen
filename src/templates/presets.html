@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+    <h1>Agent Presets</h1>
+    <a href="/presets/new" class="btn btn-primary">New Preset</a>
+</div>
+
+{% if presets %}
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Description</th>
+            <th>Agents Configured</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for preset in presets %}
+    <tr>
+        <td><a href="/presets/{{ preset.id }}"><strong>{{ preset.name }}</strong></a></td>
+        <td>{{ preset.description or '--' }}</td>
+        <td>{{ preset.agent_configs | length }} / 8</td>
+        <td style="white-space:nowrap;">
+            <a href="/presets/{{ preset.id }}" class="btn btn-sm btn-primary">Edit</a>
+            <form method="post" action="/presets/{{ preset.id }}/clone" style="display:inline;">
+                <button type="submit" class="btn btn-sm">Clone</button>
+            </form>
+            <form method="post" action="/presets/{{ preset.id }}/delete" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-danger"
+                        onclick="return confirm('Delete this preset?')">Delete</button>
+            </form>
+        </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="card"><p>No presets yet. Click "New Preset" to create one. Repos without a preset use the built-in defaults from agents.yaml.</p></div>
+{% endif %}
+{% endblock %}

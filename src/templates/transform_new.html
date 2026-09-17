@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>New Transformation</h1>
+<div class="card">
+    <form method="post" action="/transform">
+        <label>Title</label>
+        <input type="text" name="title" placeholder="e.g. Migrate frontend to Vue 3" required>
+
+        <label>Source Repository (read-only, for analysis)</label>
+        <select name="source_repo_id" id="source-repo-select" required>
+            <option value="">-- Source repo --</option>
+            {% for repo in repos %}
+            <option value="{{ repo.id }}">{{ repo.full_path }}</option>
+            {% endfor %}
+        </select>
+
+        <label>Target Repository (where new code goes)</label>
+        <select name="repo_id" id="target-repo-select" required>
+            <option value="">-- Target repo --</option>
+            {% for repo in repos %}
+            <option value="{{ repo.id }}">{{ repo.full_path }}</option>
+            {% endfor %}
+        </select>
+
+        <label>Base Branch</label>
+        <select name="base_branch" id="branch-select">
+            <option value="main">main</option>
+        </select>
+
+        <label>Description</label>
+        <textarea name="description" placeholder="Опиши что нужно трансформировать. Например:&#10;&#10;Переписать фронтенд с React на Vue 3. Заменить TradingView на LightweightCharts. Перейти с Webpack на Vite. Сохранить всю бизнес-логику и пользовательские сценарии." required style="min-height:160px;"></textarea>
+
+        <button type="submit" class="btn btn-primary">Start Transformation</button>
+    </form>
+</div>
+
+<script>
+document.getElementById('target-repo-select').addEventListener('change', function() {
+    var repoId = this.value;
+    if (!repoId) return;
+    fetch('/api/repos/' + repoId + '/branches')
+        .then(function(r) { return r.json(); })
+        .then(function(branches) {
+            var sel = document.getElementById('branch-select');
+            var html = '';
+            branches.forEach(function(b) {
+                var s = b.name === 'main' ? ' selected' : '';
+                html += '<option value="' + b.name + '"' + s + '>' + b.name + '</option>';
+            });
+            if (!html) html = '<option value="main">main</option>';
+            sel.innerHTML = html;
+        })
+        .catch(function() {});
+});
+</script>
+{% endblock %}

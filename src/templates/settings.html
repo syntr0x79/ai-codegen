@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Settings</h1>
+
+<h2>Claude</h2>
+<div class="card">
+    <div id="claude-auth">
+        <div id="claude-status" class="claude-auth-status">
+            <span style="color:#888;">Checking status...</span>
+        </div>
+        <div id="claude-login-flow" style="display:none; margin-top:0.75rem;">
+            <p>Paste the contents of <code>~/.claude/.credentials.json</code> from a machine where Claude Code is logged in:</p>
+            <p style="color:#888; font-size:0.85rem; margin-bottom:0.5rem;">Run <code>cat ~/.claude/.credentials.json</code> and copy the full JSON output.</p>
+            <textarea id="claude-creds-json" placeholder='{"claudeAiOauth": {"accessToken": "sk-ant-oat01-...", ...}}' style="min-height:120px; font-family:monospace; font-size:0.8rem;"></textarea>
+            <button class="btn btn-primary" onclick="submitClaudeToken()">Save Credentials</button>
+            <div id="claude-login-status" style="margin-top:0.5rem; font-size:0.85rem;"></div>
+        </div>
+    </div>
+</div>
+
+<h2>Pipeline</h2>
+<div class="card">
+    <form id="settings-form">
+        <label>Default Model</label>
+        <input type="text" name="default_model" value="{{ settings.get('default_model', 'claude-sonnet-4-6') }}">
+
+        <label>Max Rollbacks</label>
+        <input type="number" name="max_rollbacks" value="{{ settings.get('max_rollbacks', '3') }}" min="1" max="10">
+
+        <label>Max Concurrent Runs</label>
+        <input type="number" name="max_concurrent_runs" value="{{ settings.get('max_concurrent_runs', '2') }}" min="1" max="5">
+
+        <button type="submit" class="btn btn-primary">Save</button>
+    </form>
+</div>
+
+<h2>GitLab</h2>
+<div class="card">
+    <form id="gitlab-form">
+        <label>GitLab URL</label>
+        <input type="text" name="gitlab_url" value="{{ settings.get('gitlab_url', '') }}" placeholder="https://gitlab.com">
+
+        <label>Personal Access Token</label>
+        <input type="password" name="gitlab_token" value="{{ settings.get('gitlab_token', '') }}" placeholder="glpat-xxxxxxxxxxxxxxxxxxxx">
+
+        <div style="display:flex; gap:0.5rem;">
+            <button type="submit" class="btn btn-primary">Save</button>
+            <button type="button" class="btn" id="test-gitlab" style="background:#06d6a0; color:#fff;">Test Connection</button>
+        </div>
+    </form>
+    <div id="gitlab-test-result" style="margin-top:0.5rem;"></div>
+</div>
+
+<h2>Infrastructure (DevOps)</h2>
+<div class="card">
+    <div id="infra-status" style="margin-bottom:0.75rem;"></div>
+
+    <label>SSH Private Key <span style="font-weight:normal; color:#888;">(for infrastructure access)</span></label>
+    <textarea id="infra-ssh-key" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----" style="min-height:100px; font-family:monospace; font-size:0.8rem;"></textarea>
+    <button class="btn btn-primary btn-sm" onclick="saveInfraSSH()">Save SSH Key</button>
+    <div id="infra-ssh-status" style="font-size:0.85rem; margin-top:0.25rem;"></div>
+
+    <hr style="margin:1rem 0; border:none; border-top:1px solid #eee;">
+
+    <label>Kubeconfig <span style="font-weight:normal; color:#888;">(kubectl cluster config)</span></label>
+    <textarea id="infra-kubeconfig" placeholder="apiVersion: v1&#10;kind: Config&#10;clusters:&#10;- cluster:&#10;    server: https://..." style="min-height:100px; font-family:monospace; font-size:0.8rem;"></textarea>
+    <button class="btn btn-primary btn-sm" onclick="saveInfraKube()">Save Kubeconfig</button>
+    <div id="infra-kube-status" style="font-size:0.85rem; margin-top:0.25rem;"></div>
+</div>
+
+<script>
+// --- Infra Status ---
+(function() {
+    fetch('/api/infra/status')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            var html = '';
+            html += '<span class="' + (d.ssh_key ? 'flash flash-success' : 'flash flash-error') + '" style="display:inline-block; margin-right:0.5rem;">';
+            html += 'SSH Key: ' + (d.ssh_key ? 'Configured' : 'Not set') + '</span>';
+            html += '<span class="' + (d.kubeconfig ? 'flash flash-success' : 'flash flash-error') + '" style="display:inline-block;">';
+            html += 'Kubeconfig: ' + (d.kubeconfig ? 'Configured' : 'Not set');
+            if (d.kube_contexts && d.kube_contexts.length) html += ' (' + d.kube_contexts.join(', ') + ')';
+            html += '</span>';
+            document.getElementById('infra-status').innerHTML = html;
+        })
+        .catch(function() {});
+})();
+
+async function saveInfraSSH() {
+    var key = document.getElementById('infra-ssh-key').value.trim();
+    if (!key) { alert('Paste SSH key'); return; }
+    var el = document.getElementById('infra-ssh-status');
+    el.innerHTML = '<span style="color:#888;">Saving...</span>';
+    try {
+        var r = await fetch('/api/infra/ssh-key', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key:key}) });
+        var d = await r.json();
+        el.innerHTML = d.status === 'ok' ? '<span style="color:#155724;">Saved</span>' : '<span style="color:#e63946;">' + d.error + '</span>';
+        if (d.status === 'ok') { document.getElementById('infra-ssh-key').value = ''; location.reload(); }
+    } catch(e) { el.innerHTML = '<span style="color:#e63946;">Error</span>'; }
+}
+
+async function saveInfraKube() {
+    var config = document.getElementById('infra-kubeconfig').value.trim();
+    if (!config) { alert('Paste kubeconfig'); return; }
+    var el = document.getElementById('infra-kube-status');
+    el.innerHTML = '<span style="color:#888;">Saving...</span>';
+    try {
+        var r = await fetch('/api/infra/kubeconfig', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({config:config}) });
+        var d = await r.json();
+        el.innerHTML = d.status === 'ok' ? '<span style="color:#155724;">Saved</span>' : '<span style="color:#e63946;">' + d.error + '</span>';
+        if (d.status === 'ok') { document.getElementById('infra-kubeconfig').value = ''; location.reload(); }
+    } catch(e) { el.innerHTML = '<span style="color:#e63946;">Error</span>'; }
+}
+</script>
+
+<script>
+// --- Claude Auth ---
+
+async function checkClaudeStatus() {
+    try {
+        var resp = await fetch('/api/claude/status');
+        var data = await resp.json();
+        var el = document.getElementById('claude-status');
+        var flow = document.getElementById('claude-login-flow');
+
+        if (data.loggedIn) {
+            var label = data.email || data.authMethod || 'Claude';
+            var plan = data.subscriptionType || 'active';
+            el.innerHTML = '<span class="claude-auth-badge logged-in">Logged in: ' + label +
+                ' (' + plan + ')</span>' +
+                '<button class="btn btn-sm btn-danger" onclick="claudeLogout()">Logout</button>';
+            flow.style.display = 'none';
+        } else {
+            el.innerHTML = '<span class="claude-auth-badge logged-out">Not logged in</span>' +
+                '<button class="btn btn-sm btn-primary" onclick="claudeLogin()">Login</button>';
+            flow.style.display = 'none';
+        }
+    } catch(e) {
+        document.getElementById('claude-status').innerHTML =
+            '<span class="claude-auth-badge logged-out">Status unavailable</span>' +
+            '<button class="btn btn-sm btn-primary" onclick="claudeLogin()">Login</button>';
+    }
+}
+
+async function claudeLogin() {
+    var flow = document.getElementById('claude-login-flow');
+    flow.style.display = 'block';
+    document.getElementById('claude-creds-json').value = '';
+    document.getElementById('claude-login-status').innerHTML = '';
+}
+
+async function submitClaudeToken() {
+    var credsJson = document.getElementById('claude-creds-json').value.trim();
+    if (!credsJson) { alert('Paste the credentials JSON'); return; }
+
+    // Validate JSON
+    try { JSON.parse(credsJson); } catch(e) { alert('Invalid JSON: ' + e.message); return; }
+
+    var statusEl = document.getElementById('claude-login-status');
+    statusEl.innerHTML = '<span style="color:#888;"><span class="spinner" style="vertical-align:middle;"></span> Saving credentials...</span>';
+
+    try {
+        var resp = await fetch('/api/claude/login/token', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({credentials_json: credsJson}),
+        });
+        var data = await resp.json();
+
+        if (data.status === 'ok') {
+            statusEl.innerHTML = '<span style="color:#155724;">Credentials saved!</span>';
+            setTimeout(checkClaudeStatus, 1500);
+        } else {
+            statusEl.innerHTML = '<span style="color:#e63946;">Error: ' + (data.error || 'Unknown error') + '</span>';
+        }
+    } catch(e) {
+        statusEl.innerHTML = '<span style="color:#e63946;">Failed: ' + e + '</span>';
+    }
+}
+
+async function claudeLogout() {
+    try {
+        await fetch('/api/claude/logout', { method: 'POST' });
+        checkClaudeStatus();
+    } catch(e) {
+        alert('Logout failed: ' + e);
+    }
+}
+
+// Check on page load
+checkClaudeStatus();
+
+// --- Pipeline Settings ---
+document.querySelector('#settings-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const data = Object.fromEntries(formData);
+    await fetch('/settings', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data),
+    });
+    alert('Settings saved');
+});
+
+// --- GitLab Settings ---
+document.querySelector('#gitlab-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const data = Object.fromEntries(formData);
+    await fetch('/settings', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data),
+    });
+    alert('GitLab settings saved');
+});
+
+document.querySelector('#test-gitlab').addEventListener('click', async () => {
+    var el = document.getElementById('gitlab-test-result');
+    el.innerHTML = '<span style="color:#888;">Testing...</span>';
+    try {
+        var resp = await fetch('/api/gitlab/test');
+        var data = await resp.json();
+        if (data.error) {
+            el.innerHTML = '<span class="flash flash-error">' + data.error + '</span>';
+        } else {
+            el.innerHTML = '<span class="flash flash-success">Connected as ' + data.username + ' (' + data.name + ')</span>';
+        }
+    } catch(err) {
+        el.innerHTML = '<span class="flash flash-error">Connection failed</span>';
+    }
+});
+</script>
+{% endblock %}

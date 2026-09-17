@@ -1,0 +1,14 @@
+data/
+tests/
+__pycache__/
+*.pyc
+.env
+.git/
+docs/
+.venv/
+node_modules/
+*.png
+*.jpg
+screenshot.mjs
+package.json
+package-lock.json

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Agent Prompts</h1>
+<p style="color:#888; margin-bottom:1rem;">System prompts for all agents across all pipelines. Used when a preset doesn't override.</p>
+
+{% set ns = namespace(first_agent=True) %}
+
+{% for group_name, agents in agent_groups %}
+<h2 style="margin-top:1.5rem;">{{ group_name }}</h2>
+<div class="preset-section" style="margin-bottom:1.5rem;">
+    <div class="preset-tabs">
+        {% for num, name in agents.items() %}
+        <button class="preset-tab {% if ns.first_agent %}active{% endif %}"
+                data-agent="{{ name }}"
+                onclick="switchTab(this, '{{ name }}')">
+            {{ num }}. {{ name | replace('_', ' ') | title }}
+        </button>
+        {% endfor %}
+    </div>
+
+    {% for num, name in agents.items() %}
+    <div class="preset-agent-panel" id="panel-{{ name }}" {% if not ns.first_agent %}style="display:none;"{% endif %}>
+        <textarea id="prompt-{{ name }}" class="system-prompt-textarea" style="width:100%; min-height:400px;">{{ prompts.get(name, '') }}</textarea>
+        <div style="display:flex; gap:0.5rem; margin-top:0.5rem;">
+            <button class="btn btn-primary" onclick="savePrompt('{{ name }}')">Save</button>
+            <button class="btn" onclick="resetPrompt('{{ name }}')" style="background:#ffd166; color:#333;">Reset to Default</button>
+        </div>
+        <div id="status-{{ name }}" style="margin-top:0.25rem; font-size:0.85rem;"></div>
+    </div>
+    {% if ns.first_agent %}{% set ns.first_agent = False %}{% endif %}
+    {% endfor %}
+</div>
+{% endfor %}
+
+<script>
+function switchTab(btn, agentName) {
+    document.querySelectorAll('.preset-tab').forEach(function(t) { t.classList.remove('active'); });
+    btn.classList.add('active');
+    document.querySelectorAll('.preset-agent-panel').forEach(function(p) { p.style.display = 'none'; });
+    document.getElementById('panel-' + agentName).style.display = 'block';
+}
+
+async function savePrompt(agentName) {
+    var text = document.getElementById('prompt-' + agentName).value;
+    var statusEl = document.getElementById('status-' + agentName);
+    statusEl.innerHTML = '<span style="color:#888;">Saving...</span>';
+
+    var resp = await fetch('/prompts/' + agentName, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({system_prompt: text}),
+    });
+    if (resp.ok) {
+        statusEl.innerHTML = '<span style="color:#155724;">Saved</span>';
+    } else {
+        statusEl.innerHTML = '<span style="color:#e63946;">Error saving</span>';
+    }
+    setTimeout(function() { statusEl.innerHTML = ''; }, 3000);
+}
+
+async function resetPrompt(agentName) {
+    if (!confirm('Reset ' + agentName + ' prompt to built-in default?')) return;
+    var statusEl = document.getElementById('status-' + agentName);
+    statusEl.innerHTML = '<span style="color:#888;">Resetting...</span>';
+
+    var resp = await fetch('/prompts/reset/' + agentName, { method: 'POST' });
+    if (resp.ok) {
+        location.reload();
+    } else {
+        statusEl.innerHTML = '<span style="color:#e63946;">Error</span>';
+    }
+}
+</script>
+{% endblock %}

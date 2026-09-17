@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{% if preset %}Edit Preset: {{ preset.name }}{% else %}New Preset{% endif %}</h1>
+
+<div class="card">
+    <label>Name</label>
+    <input type="text" id="preset-name" value="{{ preset.name if preset else '' }}" placeholder="e.g. Python Backend" required>
+
+    <label>Description</label>
+    <input type="text" id="preset-desc" value="{{ preset.description if preset else '' }}" placeholder="Optional description">
+</div>
+
+<h2>Agent Configuration</h2>
+<div class="preset-section">
+    <div class="preset-tabs">
+        {% for num, name in agents.items() %}
+        {% if name != 'pipeline' %}
+        <button class="preset-tab {% if loop.first %}active{% endif %}"
+                data-agent="{{ name }}"
+                onclick="switchPresetTab(this, '{{ name }}')">
+            {{ num }}. {{ name | replace('_', ' ') | title }}
+            <span class="preset-tab-dot" id="dot-{{ name }}"></span>
+        </button>
+        {% endif %}
+        {% endfor %}
+    </div>
+
+    {% for num, name in agents.items() %}
+    {% if name != 'pipeline' %}
+    {% set defaults = agents_config.get(name, {}) %}
+    {% set overrides = preset.agent_configs.get(name, {}) if preset else {} %}
+
+    <div class="preset-agent-panel" id="panel-{{ name }}" {% if not loop.first %}style="display:none;"{% endif %}>
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.75rem; margin-bottom:0.75rem;">
+            <div>
+                <label>Model</label>
+                <input type="text" class="agent-field" data-agent="{{ name }}" data-field="model"
+                       value="{{ overrides.get('model', '') }}"
+                       placeholder="{{ defaults.get('model', 'claude-sonnet-4-6') }}">
+            </div>
+            <div>
+                <label>Max Turns</label>
+                <input type="number" class="agent-field" data-agent="{{ name }}" data-field="max_turns"
+                       value="{{ overrides.get('max_turns', '') }}"
+                       placeholder="{{ defaults.get('max_turns', 10) }}" min="1" max="100">
+            </div>
+            <div>
+                <label>Timeout (seconds)</label>
+                <input type="number" class="agent-field" data-agent="{{ name }}" data-field="timeout"
+                       value="{{ overrides.get('timeout', '') }}"
+                       placeholder="{{ defaults.get('timeout', 600) }}" min="60" max="7200">
+            </div>
+        </div>
+
+        <label>Allowed Tools</label>
+        <div class="tools-checkboxes" style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:0.75rem;">
+            {% set agent_tools = overrides.get('allowed_tools', []) %}
+            {% set default_tools = defaults.get('allowed_tools', []) %}
+            {% for tool in available_tools %}
+            <label style="font-weight:normal; display:flex; align-items:center; gap:0.25rem;">
+                <input type="checkbox" class="agent-tool" data-agent="{{ name }}" value="{{ tool }}"
+                       {% if agent_tools %}
+                           {% if tool in agent_tools %}checked{% endif %}
+                       {% else %}
+                           {% if tool in default_tools %}checked{% endif %}
+                       {% endif %}>
+                {{ tool }}
+            </label>
+            {% endfor %}
+        </div>
+
+        <label>System Prompt <span style="font-weight:normal; color:#888;">(leave empty to use default)</span></label>
+        <textarea class="agent-field system-prompt-textarea" data-agent="{{ name }}" data-field="system_prompt"
+                  placeholder="Default prompt from {{ name }}.md will be used if empty"
+                  >{{ overrides.get('system_prompt', '') }}</textarea>
+
+        <button type="button" class="btn btn-sm" style="margin-top:0.5rem;"
+                onclick="clearAgent('{{ name }}')">Clear overrides for this agent</button>
+    </div>
+    {% endif %}
+    {% endfor %}
+</div>
+
+<div style="margin-top:1rem; display:flex; gap:0.5rem;">
+    <button class="btn btn-primary" onclick="savePreset()">Save</button>
+    <a href="/presets" class="btn">Cancel</a>
+</div>
+
+<script>
+function switchPresetTab(btn, agentName) {
+    document.querySelectorAll('.preset-tab').forEach(function(t) { t.classList.remove('active'); });
+    btn.classList.add('active');
+    document.querySelectorAll('.preset-agent-panel').forEach(function(p) { p.style.display = 'none'; });
+    document.getElementById('panel-' + agentName).style.display = 'block';
+}
+
+function clearAgent(agentName) {
+    var panel = document.getElementById('panel-' + agentName);
+    panel.querySelectorAll('input[type=text], input[type=number]').forEach(function(i) { i.value = ''; });
+    panel.querySelectorAll('textarea').forEach(function(t) { t.value = ''; });
+    // Reset checkboxes to defaults (uncheck all, user can re-check)
+    panel.querySelectorAll('input[type=checkbox]').forEach(function(c) { c.checked = false; });
+    updateDots();
+}
+
+function collectData() {
+    var configs = {};
+    var agents = new Set();
+    document.querySelectorAll('.agent-field').forEach(function(el) {
+        agents.add(el.dataset.agent);
+    });
+
+    agents.forEach(function(agentName) {
+        var overrides = {};
+        document.querySelectorAll('.agent-field[data-agent="' + agentName + '"]').forEach(function(el) {
+            var val = el.value.trim();
+            if (!val) return;
+            var field = el.dataset.field;
+            if (field === 'max_turns' || field === 'timeout') {
+                overrides[field] = parseInt(val);
+            } else {
+                overrides[field] = val;
+            }
+        });
+
+        // Collect tools
+        var tools = [];
+        var hasToolOverride = false;
+        document.querySelectorAll('.agent-tool[data-agent="' + agentName + '"]').forEach(function(cb) {
+            if (cb.checked) tools.push(cb.value);
+        });
+        // Only include tools if something else is overridden or tools differ
+        if (Object.keys(overrides).length > 0 || tools.length > 0) {
+            overrides.allowed_tools = tools;
+        }
+
+        if (Object.keys(overrides).length > 0) {
+            configs[agentName] = overrides;
+        }
+    });
+
+    return {
+        name: document.getElementById('preset-name').value.trim(),
+        description: document.getElementById('preset-desc').value.trim(),
+        agent_configs: configs,
+    };
+}
+
+function updateDots() {
+    document.querySelectorAll('.preset-tab').forEach(function(tab) {
+        var agent = tab.dataset.agent;
+        var dot = document.getElementById('dot-' + agent);
+        if (!dot) return;
+        var hasOverride = false;
+        document.querySelectorAll('.agent-field[data-agent="' + agent + '"]').forEach(function(el) {
+            if (el.value.trim()) hasOverride = true;
+        });
+        dot.style.background = hasOverride ? '#06d6a0' : 'transparent';
+    });
+}
+
+async function savePreset() {
+    var data = collectData();
+    if (!data.name) { alert('Name is required'); return; }
+
+    var presetId = '{{ preset.id if preset else "" }}';
+    var method = presetId ? 'PUT' : 'POST';
+    var url = presetId ? '/presets/' + presetId : '/presets';
+
+    var resp = await fetch(url, {
+        method: method,
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data),
+    });
+    var result = await resp.json();
+    if (result.redirect) {
+        location.href = result.redirect;
+    } else {
+        alert('Saved');
+        location.reload();
+    }
+}
+
+// Init dots
+document.addEventListener('DOMContentLoaded', updateDots);
+document.querySelectorAll('.agent-field').forEach(function(el) {
+    el.addEventListener('input', updateDots);
+});
+</script>
+{% endblock %}

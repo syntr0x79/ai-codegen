@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>New Pipeline Run</h1>
+<div class="card">
+    <form method="post" action="/runs">
+        <label>Title</label>
+        <input type="text" name="title" placeholder="Short run name" required>
+
+        <label>Repository</label>
+        <select name="repo_id" id="repo-select" required>
+            <option value="">-- Select repository --</option>
+            {% for repo in repos %}
+            <option value="{{ repo.id }}" data-branches-url="/api/repos/{{ repo.id }}/branches" data-default-branch="{{ repo.default_branch }}">
+                {{ repo.full_path }}
+            </option>
+            {% endfor %}
+        </select>
+
+        <label>Base Branch</label>
+        <select name="base_branch" id="branch-select">
+            <option value="main">main</option>
+        </select>
+
+        <label>Work Type</label>
+        <div class="work-type-selector">
+            <label class="work-type-option">
+                <input type="radio" name="work_type" value="feature" required>
+                <div class="work-type-card">
+                    <strong>Feature</strong>
+                    <span>New functionality (all 8 agents)</span>
+                </div>
+            </label>
+            <label class="work-type-option">
+                <input type="radio" name="work_type" value="bugfix">
+                <div class="work-type-card">
+                    <strong>Bugfix</strong>
+                    <span>Fix a defect (skip arch + security)</span>
+                </div>
+            </label>
+            <label class="work-type-option">
+                <input type="radio" name="work_type" value="refactor">
+                <div class="work-type-card">
+                    <strong>Refactor</strong>
+                    <span>No behavior change (skip spec + security)</span>
+                </div>
+            </label>
+            <label class="work-type-option">
+                <input type="radio" name="work_type" value="migration">
+                <div class="work-type-card">
+                    <strong>Migration</strong>
+                    <span>High-risk: all 8 agents, all checkpoints</span>
+                </div>
+            </label>
+            <label class="work-type-option">
+                <input type="radio" name="work_type" value="hotfix">
+                <div class="work-type-card">
+                    <strong>Hotfix</strong>
+                    <span>Urgent fix (like bugfix + spec checkpoint)</span>
+                </div>
+            </label>
+        </div>
+
+        <label>Description</label>
+        <textarea name="description" placeholder="Describe what you want to build or change..." required></textarea>
+
+        <button type="submit" class="btn btn-primary">Start Run</button>
+    </form>
+</div>
+
+<script>
+// Fetch branches when repo changes
+document.getElementById('repo-select').addEventListener('change', function() {
+    var opt = this.options[this.selectedIndex];
+    var url = opt.getAttribute('data-branches-url');
+    var defaultBranch = opt.getAttribute('data-default-branch') || 'main';
+    var branchSelect = document.getElementById('branch-select');
+
+    if (!url) {
+        branchSelect.innerHTML = '<option value="main">main</option>';
+        return;
+    }
+
+    fetch(url)
+        .then(function(r) { return r.json(); })
+        .then(function(branches) {
+            var html = '';
+            branches.forEach(function(b) {
+                var selected = b.name === defaultBranch ? ' selected' : '';
+                html += '<option value="' + b.name + '"' + selected + '>' + b.name + '</option>';
+            });
+            if (!html) html = '<option value="main">main</option>';
+            branchSelect.innerHTML = html;
+        })
+        .catch(function() {
+            branchSelect.innerHTML = '<option value="' + defaultBranch + '">' + defaultBranch + '</option>';
+        });
+});
+</script>
+{% endblock %}

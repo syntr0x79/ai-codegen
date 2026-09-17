@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>New DevOps Operation</h1>
+<div class="card">
+    <form method="post" action="/devops">
+        <label>Title</label>
+        <input type="text" name="title" placeholder="e.g. Scale frontend to 5 replicas" required>
+
+        <label>Target Repository / Environment</label>
+        <select name="repo_id" required>
+            <option value="">-- Select repo --</option>
+            {% for repo in repos %}
+            <option value="{{ repo.id }}">{{ repo.full_path }}</option>
+            {% endfor %}
+        </select>
+
+        <label>Description</label>
+        <textarea name="description" placeholder="Опиши что нужно сделать с инфраструктурой. Например:&#10;&#10;- Проверить состояние PostgreSQL кластера&#10;- Обновить helm-чарт frontend до версии 2.0&#10;- Расследовать высокое потребление памяти на workers&#10;- Выполнить rolling restart деплоймента client-server" required style="min-height:160px;"></textarea>
+
+        <button type="submit" class="btn btn-primary">Start Operation</button>
+    </form>
+</div>
+{% endblock %}

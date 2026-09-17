@@ -1,0 +1,9 @@
+data/
+__pycache__/
+*.pyc
+.env
+node_modules/
+package.json
+package-lock.json
+screenshot.mjs
+.venv/

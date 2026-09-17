@@ -1,0 +1,124 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: factory-postgres
+    environment:
+      POSTGRES_DB: factory
+      POSTGRES_USER: factory
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-factory}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5433:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U factory"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: factory-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: factory
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-factory}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "127.0.0.1:15672:15672"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: factory-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: factory
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-factoryminio}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "127.0.0.1:9001:9001"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: .
+      dockerfile: web.Dockerfile
+    container_name: factory-web
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    ports:
+      - "10.0.0.24:8585:8000"
+    env_file: .env
+    networks:
+      - default
+      - obs_monitoring
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: orchestrator/Dockerfile
+    container_name: factory-orchestrator
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      RABBITMQ_URL: amqp://factory:${RABBITMQ_PASSWORD:-factory}@rabbitmq:5672/
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      RABBITMQ_URL: amqp://factory:${RABBITMQ_PASSWORD:-factory}@rabbitmq:5672/
+    volumes:
+      - worker_repos:/app/data
+    deploy:
+      replicas: 5
+    restart: unless-stopped
+
+networks:
+  obs_monitoring:
+    external: true
+    name: obs_monitoring
+
+volumes:
+  pgdata:
+  rabbitmq_data:
+  minio_data:
+  worker_repos:

@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+    <div>
+        <h1>{{ repo.name }}</h1>
+        <span style="color:#888;">{{ repo.full_path }}</span>
+    </div>
+    <div style="display:flex; gap:0.5rem;">
+        <form method="post" action="/repos/{{ repo.id }}/sync">
+            <button type="submit" class="btn btn-primary btn-sm">Sync</button>
+        </form>
+        <form method="post" action="/repos/{{ repo.id }}/disconnect" style="display:inline">
+            <button type="submit" class="btn btn-danger btn-sm"
+                    onclick="return confirm('Disconnect this repository?')">
+                Disconnect
+            </button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; font-size:0.9rem;">
+        <div><strong>SSH URL:</strong> <code>{{ repo.clone_url_ssh }}</code></div>
+        <div><strong>HTTP URL:</strong> <code>{{ repo.clone_url_http }}</code></div>
+        <div><strong>Default Branch:</strong> <code>{{ repo.default_branch }}</code></div>
+        <div><strong>GitLab ID:</strong> {{ repo.gitlab_project_id }}</div>
+        <div><strong>Last Synced:</strong> {{ repo.last_synced_at.strftime('%Y-%m-%d %H:%M UTC') if repo.last_synced_at else '--' }}</div>
+    </div>
+</div>
+
+<h2>Project Context</h2>
+<div class="card">
+    <p style="color:#888; font-size:0.85rem; margin-bottom:0.5rem;">Technical standards, conventions, and stack description. Injected into every agent's prompt when working on this repo.</p>
+    <form method="post" action="/repos/{{ repo.id }}/context">
+        <textarea name="context" placeholder="e.g. Python 3.12, FastAPI, PostgreSQL, pytest. Follow PEP 8. Use async/await everywhere. DB migrations via Alembic." style="min-height:100px;">{{ repo.context or '' }}</textarea>
+        <button type="submit" class="btn btn-primary btn-sm">Save Context</button>
+    </form>
+</div>
+
+<h2>Agent Preset</h2>
+<div class="card">
+    <form method="post" action="/repos/{{ repo.id }}/preset" style="display:flex; gap:0.5rem; align-items:center;">
+        <select name="preset_id" style="flex:1; margin-bottom:0;">
+            <option value="">Default (agents.yaml)</option>
+            {% for p in presets %}
+            <option value="{{ p.id }}" {% if repo.preset_id == p.id %}selected{% endif %}>{{ p.name }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+    </form>
+</div>
+
+<h2>Branches</h2>
+{% if branches %}
+<div class="card" style="max-height:300px; overflow-y:auto;">
+    <table>
+        <thead>
+            <tr><th>Branch</th><th>Protected</th><th>Last Commit</th></tr>
+        </thead>
+        <tbody>
+        {% for b in branches %}
+        <tr>
+            <td>
+                <code>{{ b.name }}</code>
+                {% if b.default %}<span class="status status-completed" style="margin-left:0.25rem;">default</span>{% endif %}
+            </td>
+            <td>{% if b.protected %}Yes{% else %}--{% endif %}</td>
+            <td style="font-size:0.85rem; color:#888;">{{ b.commit_message[:60] if b.commit_message else '--' }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card"><p style="color:#888;">No branches loaded. Click Sync or check GitLab connection.</p></div>
+{% endif %}
+
+<h2>Recent Runs</h2>
+{% if runs %}
+<table>
+    <thead><tr><th>ID</th><th>Title</th><th>Type</th><th>Status</th><th>Branch</th></tr></thead>
+    <tbody>
+    {% for run in runs %}
+    <tr style="cursor:pointer" onclick="location.href='/runs/{{ run.id }}'">
+        <td>{{ run.id }}</td>
+        <td>{{ run.title }}</td>
+        <td>{{ run.work_type }}</td>
+        <td><span class="status status-{{ run.status }}">{{ run.status }}</span></td>
+        <td><code>{{ run.work_branch }}</code></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="card"><p style="color:#888;">No runs yet for this repository.</p></div>
+{% endif %}
+{% endblock %}
