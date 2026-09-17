@@ -1,5 +1,7 @@
 # ai-codegen
 
+[![tests](https://github.com/syntr0x79/ai-codegen/actions/workflows/tests.yml/badge.svg)](https://github.com/syntr0x79/ai-codegen/actions/workflows/tests.yml)
+
 A pipeline that takes a task description and produces a merge request — through nine agents that hand work to each other as **files**, not as conversation.
 
 Each stage declares what it may read, what it must write, which tools it is allowed to call, and how many turns it gets. A stage that does not produce its artifacts fails the run. A stage cannot read an artifact it was not granted.
