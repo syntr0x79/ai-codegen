@@ -31,10 +31,14 @@ def repo_with_artifacts(tmp_path):
     return tmp_path
 
 
+# The prompt library is written in Russian — that is the working language of
+# the team this was built for, and the headings below are what the builder
+# actually emits. These two assertions were left behind by the translation and
+# asserted the old English wording.
 def test_build_prompt_orchestrator(repo_with_artifacts):
     prompt = build_prompt("orchestrator", repo_with_artifacts, task_description="Add login")
     assert "Add login" in prompt
-    assert "## Task" in prompt
+    assert "## Задача" in prompt
 
 
 def test_build_prompt_spec_builder(repo_with_artifacts):
@@ -59,8 +63,9 @@ def test_build_prompt_with_rollback_context(repo_with_artifacts):
     run_context = {"rollback_count": 2, "work_type": "feature", "risk_level": "high"}
     prompt = build_prompt("implementation", repo_with_artifacts,
                           config=config, run_context=run_context)
-    assert "retry #2" in prompt
-    assert "Work type: feature" in prompt
+    assert "повторная попытка #2" in prompt
+    assert "Тип работы: feature" in prompt
+    assert "Уровень риска: high" in prompt
 
 
 def test_parse_verdict_orchestrator(repo_with_artifacts):
